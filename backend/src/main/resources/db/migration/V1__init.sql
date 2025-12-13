@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS users (
+  id BIGSERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO users (email) VALUES ('demo@student.ncirl.ie')
+ON CONFLICT (email) DO NOTHING;
