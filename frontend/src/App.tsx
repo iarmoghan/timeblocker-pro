@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { formatNiceDateTime, formatNiceRange } from "./utils/datetime";
 
 type EventItem = {
   id: number;
@@ -395,7 +396,7 @@ export default function App() {
                 <li key={`${it.type}-${it.id}`} style={{ marginBottom: 10 }}>
                   <b>{it.type === "event" ? "Event" : "Block"}:</b> {it.title}
                   <div style={{ fontSize: 13 }}>
-                    {new Date(it.start).toLocaleString()} → {new Date(it.end).toLocaleString()}
+                    {formatNiceRange(it.start, it.end)}
                     {it.extra ? ` | ${it.extra}` : ""}
                   </div>
 
@@ -438,7 +439,7 @@ export default function App() {
                 <li key={ev.id} style={{ marginBottom: 8 }}>
                   <b>{ev.title}</b>
                   <div style={{ fontSize: 13 }}>
-                    {new Date(ev.startTime).toLocaleString()} → {new Date(ev.endTime).toLocaleString()}
+                    {formatNiceRange(ev.startTime, ev.endTime)}
                     {ev.location ? ` | ${ev.location}` : ""}
                   </div>
                 </li>
@@ -509,7 +510,7 @@ export default function App() {
                   <b>{t.title}</b>{" "}
                   <span style={{ fontSize: 13 }}>
                     (est {t.estMinutes}m, prio {t.priority}
-                    {t.deadline ? `, due ${new Date(t.deadline).toLocaleString()}` : ""})
+                    {t.deadline ? `, due ${formatNiceDateTime(t.deadline)}` : ""})
                   </span>
                   <div>
                     <button onClick={() => markTaskDone(t.id)} style={{ padding: "6px 10px", marginTop: 4 }}>
@@ -566,9 +567,7 @@ export default function App() {
               {planBlocks.slice(0, 200).map((b) => (
                 <li key={b.id} style={{ marginBottom: 8 }}>
                   <b>{b.title}</b> <span style={{ fontSize: 13 }}>({b.status})</span>
-                  <div style={{ fontSize: 13 }}>
-                    {new Date(b.startTime).toLocaleString()} → {new Date(b.endTime).toLocaleString()}
-                  </div>
+                  <div style={{ fontSize: 13 }}>{formatNiceRange(b.startTime, b.endTime)}</div>
                 </li>
               ))}
             </ul>
@@ -631,7 +630,7 @@ export default function App() {
           {prefs && (
             <p style={{ marginTop: 12, fontSize: 13 }}>
               Current saved settings: <b>{prefs.dayStartHour}:00–{prefs.dayEndHour}:00</b>, block{" "}
-              <b>{prefs.blockMinutes}m</b> (updated {new Date(prefs.updatedAt).toLocaleString()}).
+              <b>{prefs.blockMinutes}m</b> (updated {formatNiceDateTime(prefs.updatedAt)}).
             </p>
           )}
         </>
