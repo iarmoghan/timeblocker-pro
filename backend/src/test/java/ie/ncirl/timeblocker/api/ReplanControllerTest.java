@@ -20,7 +20,13 @@ public class ReplanControllerTest {
         PlanService planService = mock(PlanService.class);
 
         when(planService.replanWeek(LocalDate.parse("2025-12-08")))
-                .thenReturn(new PlanService.GenerateResult(21L, LocalDate.parse("2025-12-08"), 2, 0));
+                .thenReturn(new PlanService.GenerateResult(
+                        21L,
+                        LocalDate.parse("2025-12-08"),
+                        2,
+                        0,
+                        List.of()
+                ));
 
         when(planService.getBlocks(21L)).thenReturn(List.of());
 
@@ -38,5 +44,6 @@ public class ReplanControllerTest {
         assertEquals("2025-12-08", body.get("weekStart"));
         assertEquals(2, ((Number) body.get("scheduledBlocks")).intValue());
         assertEquals(0, ((Number) body.get("unscheduledTasks")).intValue());
+        assertNotNull(body.get("unscheduled"));
     }
 }

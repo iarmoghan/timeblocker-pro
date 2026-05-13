@@ -39,9 +39,8 @@ public class PlanServiceTest {
         prefs.setDayStartHour(8);
         prefs.setDayEndHour(20);
         prefs.setBlockMinutes(60);
-        when(prefsRepo.findById(1L)).thenReturn(Optional.of(prefs));
 
-        Plan existing = null;
+        when(prefsRepo.findById(1L)).thenReturn(Optional.of(prefs));
         when(planRepo.findByUserIdAndWeekStart(eq(1L), any())).thenReturn(Optional.empty());
 
         when(planRepo.save(any())).thenAnswer(inv -> {
@@ -60,6 +59,7 @@ public class PlanServiceTest {
         t.setPriority(1);
         t.setStatus("OPEN");
         t.setDeadline(Instant.now().plusSeconds(3600 * 24));
+
         when(taskRepo.findByUserIdAndStatusOrderByDeadlineAsc(1L, "OPEN")).thenReturn(List.of(t));
 
         PlanService svc = new PlanService(planRepo, blockRepo, taskRepo, eventRepo, prefsRepo);
@@ -68,6 +68,7 @@ public class PlanServiceTest {
 
         assertTrue(result.scheduledBlocks() >= 1);
         assertEquals(0, result.unscheduledTasks());
+        assertTrue(result.unscheduled().isEmpty());
 
         verify(blockRepo, atLeastOnce()).save(any());
     }
