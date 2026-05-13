@@ -39,8 +39,8 @@ public class TaskController {
     ) {}
 
     @GetMapping
-    public List<Task> listOpen() {
-        return taskRepo.findByUserIdAndStatusOrderByDeadlineAsc(DEMO_USER_ID, "OPEN");
+    public List<Task> listAll() {
+        return taskRepo.findByUserIdOrderByStatusAscDeadlineAsc(DEMO_USER_ID);
     }
 
     @PostMapping

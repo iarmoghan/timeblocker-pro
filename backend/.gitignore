@@ -29,7 +29,9 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-### VS Code ###
-.vscode/
-
+# Ignore calendar exports / personal timetable files
 *.ics
+
+# Allow ONLY the strict demo timetable (the one used for screenshots)
+!timeblocker_demo_strict.ics
+!**/timeblocker_demo_strict.ics
