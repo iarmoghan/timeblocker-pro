@@ -31,11 +31,13 @@ public class PlanController {
             LocalDate ws = LocalDate.parse(weekStart);
             var result = planService.generateWeeklyPlan(ws);
             List<Block> blocks = planService.getBlocks(result.planId());
+
             return ResponseEntity.ok(Map.of(
                     "planId", result.planId(),
                     "weekStart", result.weekStart().toString(),
                     "scheduledBlocks", result.scheduledBlocks(),
                     "unscheduledTasks", result.unscheduledTasks(),
+                    "unscheduled", result.unscheduled(),
                     "blocks", blocks
             ));
         } catch (Exception e) {

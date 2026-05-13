@@ -26,11 +26,13 @@ public class ReplanController {
         try {
             LocalDate ws = LocalDate.parse(weekStart);
             var r = planService.replanWeek(ws);
+
             return ResponseEntity.ok(Map.of(
                     "planId", r.planId(),
                     "weekStart", r.weekStart().toString(),
                     "scheduledBlocks", r.scheduledBlocks(),
                     "unscheduledTasks", r.unscheduledTasks(),
+                    "unscheduled", r.unscheduled(),
                     "blocks", planService.getBlocks(r.planId())
             ));
         } catch (Exception e) {

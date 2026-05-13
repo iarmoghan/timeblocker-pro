@@ -51,7 +51,15 @@ public class PlanService {
         this.prefsRepo = prefsRepo;
     }
 
-    public record GenerateResult(Long planId, LocalDate weekStart, int scheduledBlocks, int unscheduledTasks) {}
+    public record UnscheduledTask(Long taskId, String title, int remainingMinutes) {}
+
+    public record GenerateResult(
+            Long planId,
+            LocalDate weekStart,
+            int scheduledBlocks,
+            int unscheduledTasks,
+            List<UnscheduledTask> unscheduled
+    ) {}
 
     private record Interval(Instant start, Instant end) {}
 
@@ -114,8 +122,14 @@ public class PlanService {
         int dayEndHour   = prefs.getDayEndHour() == null ? 20 : prefs.getDayEndHour();
         int blockMin     = prefs.getBlockMinutes() == null ? 60 : prefs.getBlockMinutes();
 
-        if (dayEndHour <= dayStartHour) { dayStartHour = 8; dayEndHour = 20; }
-        if (blockMin < 15) blockMin = 15;
+        if (dayEndHour <= dayStartHour) {
+            dayStartHour = 8;
+            dayEndHour = 20;
+        }
+
+        if (blockMin < 15) {
+            blockMin = 15;
+        }
 
         Instant weekStartInstant = weekStart.atStartOfDay(ZONE).toInstant();
         Instant weekEndInstant = weekStart.plusDays(7).atStartOfDay(ZONE).toInstant();
@@ -126,7 +140,10 @@ public class PlanService {
                 .collect(Collectors.toList());
 
         List<Interval> busy = new ArrayList<>();
-        for (var e : events) busy.add(new Interval(e.getStartTime(), e.getEndTime()));
+
+        for (var e : events) {
+            busy.add(new Interval(e.getStartTime(), e.getEndTime()));
+        }
 
         // Busy intervals from DONE blocks we keep
         for (Block b : keepBusyBlocks) {
@@ -144,22 +161,29 @@ public class PlanService {
             Instant baseStart = day.atTime(dayStartHour, 0).atZone(ZONE).toInstant();
             Instant baseEnd   = day.atTime(dayEndHour, 0).atZone(ZONE).toInstant();
 
-            // Don’t schedule in the past (for replan)
-            if (baseEnd.isBefore(fromInstant)) continue;
+            // Don’t schedule in the past during replan
+            if (baseEnd.isBefore(fromInstant)) {
+                continue;
+            }
 
             Instant ds = baseStart;
+
             if (ds.isBefore(fromInstant)) {
                 ds = fromInstant.truncatedTo(ChronoUnit.MINUTES);
             }
+
             Instant de = baseEnd;
 
-            if (!ds.isBefore(de)) continue;
+            if (!ds.isBefore(de)) {
+                continue;
+            }
 
             final Instant dayStartFinal = ds;
             final Instant dayEndFinal = de;
 
             // Collect busy intervals that overlap this day window
             List<Interval> dayBusy = new ArrayList<>();
+
             for (Interval b : busy) {
                 if (b.start().isBefore(dayEndFinal) && b.end().isAfter(dayStartFinal)) {
                     dayBusy.add(new Interval(max(b.start(), dayStartFinal), min(b.end(), dayEndFinal)));
@@ -179,6 +203,7 @@ public class PlanService {
 
         // Minutes already completed from DONE blocks
         Map<Long, Integer> doneMinutesByTask = new HashMap<>();
+
         for (Block b : keepBusyBlocks) {
             if (b.getTaskId() != null) {
                 long mins = Duration.between(b.getStartTime(), b.getEndTime()).toMinutes();
@@ -187,23 +212,27 @@ public class PlanService {
         }
 
         int blocksCreated = 0;
-        int unscheduledTasks = 0;
+        List<UnscheduledTask> unscheduled = new ArrayList<>();
 
         for (Task task : tasks) {
             int est = task.getEstMinutes() == null ? blockMin : task.getEstMinutes();
             int alreadyDone = doneMinutesByTask.getOrDefault(task.getId(), 0);
             int remaining = Math.max(0, est - alreadyDone);
 
-            if (remaining == 0) continue;
+            if (remaining == 0) {
+                continue;
+            }
 
             Instant deadline = task.getDeadline();
-            boolean scheduledAny = false;
 
             while (remaining > 0) {
                 int slice = Math.min(blockMin, remaining);
 
                 int idx = findFirstFit(free, slice, deadline);
-                if (idx < 0) break;
+
+                if (idx < 0) {
+                    break;
+                }
 
                 Interval slot = free.get(idx);
                 Instant start = slot.start();
@@ -219,32 +248,43 @@ public class PlanService {
                 blockRepo.save(b);
 
                 blocksCreated++;
-                scheduledAny = true;
                 remaining -= slice;
 
                 // Consume from start of that free interval
                 Interval leftover = new Interval(end, slot.end());
                 free.remove(idx);
+
                 if (leftover.start().isBefore(leftover.end())) {
                     free.add(idx, leftover);
                 }
             }
 
-            if (!scheduledAny) unscheduledTasks++;
+            if (remaining > 0) {
+                unscheduled.add(new UnscheduledTask(task.getId(), task.getTitle(), remaining));
+            }
         }
 
-        return new GenerateResult(plan.getId(), weekStart, blocksCreated, unscheduledTasks);
+        return new GenerateResult(plan.getId(), weekStart, blocksCreated, unscheduled.size(), unscheduled);
     }
 
     private static int findFirstFit(List<Interval> free, int minutes, Instant deadline) {
         Duration dur = Duration.ofMinutes(minutes);
+
         for (int i = 0; i < free.size(); i++) {
             Interval slot = free.get(i);
             Instant end = slot.start().plus(dur);
-            if (end.isAfter(slot.end())) continue;
-            if (deadline != null && end.isAfter(deadline)) continue;
+
+            if (end.isAfter(slot.end())) {
+                continue;
+            }
+
+            if (deadline != null && end.isAfter(deadline)) {
+                continue;
+            }
+
             return i;
         }
+
         return -1;
     }
 
@@ -252,13 +292,13 @@ public class PlanService {
         List<Interval> free = new ArrayList<>();
         Instant cursor = window.start();
 
-        // busy is assumed sorted or small; either way works
         busy.sort(Comparator.comparing(Interval::start));
 
         for (Interval b : busy) {
             if (b.start().isAfter(cursor)) {
                 free.add(new Interval(cursor, b.start()));
             }
+
             cursor = max(cursor, b.end());
         }
 
@@ -266,12 +306,17 @@ public class PlanService {
             free.add(new Interval(cursor, window.end()));
         }
 
-        // Remove tiny fragments (<10 min)
+        // Remove tiny fragments under 10 minutes
         return free.stream()
                 .filter(i -> Duration.between(i.start(), i.end()).toMinutes() >= 10)
                 .toList();
     }
 
-    private static Instant max(Instant a, Instant b) { return a.isAfter(b) ? a : b; }
-    private static Instant min(Instant a, Instant b) { return a.isBefore(b) ? a : b; }
+    private static Instant max(Instant a, Instant b) {
+        return a.isAfter(b) ? a : b;
+    }
+
+    private static Instant min(Instant a, Instant b) {
+        return a.isBefore(b) ? a : b;
+    }
 }

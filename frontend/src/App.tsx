@@ -29,6 +29,12 @@ type Block = {
   status: string;
 };
 
+type UnscheduledTask = {
+  taskId: number;
+  title: string;
+  remainingMinutes: number;
+};
+
 type DayResponse = {
   date: string;
   weekStart: string;
@@ -60,7 +66,7 @@ function todayIsoDate() {
 }
 
 function computeMondayIso(d = new Date()) {
-  const day = d.getDay(); // 0=Sun
+  const day = d.getDay();
   const diffToMon = (day === 0 ? -6 : 1) - day;
   const mon = new Date(d);
   mon.setDate(d.getDate() + diffToMon);
@@ -280,7 +286,11 @@ export default function App() {
 
   const [weekStart, setWeekStart] = useState(() => computeMondayIso());
   const [planBlocks, setPlanBlocks] = useState<Block[]>([]);
-  const [planStats, setPlanStats] = useState<{ scheduledBlocks: number; unscheduledTasks: number } | null>(null);
+  const [planStats, setPlanStats] = useState<{
+    scheduledBlocks: number;
+    unscheduledTasks: number;
+    unscheduled: UnscheduledTask[];
+  } | null>(null);
 
   const [dayDate, setDayDate] = useState(todayIsoDate());
   const [dayData, setDayData] = useState<DayResponse | null>(null);
@@ -302,6 +312,7 @@ export default function App() {
 
   const loadDay = async (date: string) => {
     const res = await fetch(`/api/day?date=${encodeURIComponent(date)}`);
+
     if (!res.ok) {
       const err = await res.text();
       setMsg(`Load day failed (${res.status}): ${err}`);
@@ -311,11 +322,14 @@ export default function App() {
     const out = (await res.json()) as DayResponse;
     setDayData(out);
 
-    if (out.weekStart) setWeekStart(out.weekStart);
+    if (out.weekStart) {
+      setWeekStart(out.weekStart);
+    }
   };
 
   const loadPrefs = async () => {
     const res = await fetch("/api/preferences");
+
     if (!res.ok) {
       const err = await res.text();
       setMsg(`Load preferences failed (${res.status}): ${err}`);
@@ -356,10 +370,15 @@ export default function App() {
     }
 
     setMsg("Importing timetable...");
+
     const form = new FormData();
     form.append("file", icsFile);
 
-    const res = await fetch("/api/feeds/1/import", { method: "POST", body: form });
+    const res = await fetch("/api/feeds/1/import", {
+      method: "POST",
+      body: form,
+    });
+
     if (!res.ok) {
       const err = await res.text();
       setMsg(`Import failed (${res.status}): ${err}`);
@@ -367,6 +386,7 @@ export default function App() {
     }
 
     const out = await res.json();
+
     setMsg(`Imported ${out.imported} events from ${icsFile.name}.`);
     await loadEvents();
     await loadDay(dayDate);
@@ -392,7 +412,9 @@ export default function App() {
 
     const res = await fetch("/api/tasks", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         title: taskTitle,
         deadline: deadlineIso,
@@ -411,13 +433,17 @@ export default function App() {
     setTaskDeadlineLocal("");
     setTaskEst(60);
     setTaskPriority(1);
+
     setMsg("Task created.");
     await loadTasks();
     await loadDay(dayDate);
   };
 
   const markTaskDone = async (id: number) => {
-    const res = await fetch(`/api/tasks/${id}/done`, { method: "POST" });
+    const res = await fetch(`/api/tasks/${id}/done`, {
+      method: "POST",
+    });
+
     if (!res.ok) {
       const err = await res.text();
       setMsg(`Mark task done failed (${res.status}): ${err}`);
@@ -431,7 +457,11 @@ export default function App() {
 
   const generatePlan = async (ws: string) => {
     setMsg("Generating plan...");
-    const res = await fetch(`/api/plans/generate?weekStart=${encodeURIComponent(ws)}`, { method: "POST" });
+
+    const res = await fetch(`/api/plans/generate?weekStart=${encodeURIComponent(ws)}`, {
+      method: "POST",
+    });
+
     if (!res.ok) {
       const err = await res.text();
       setMsg(`Generate failed (${res.status}): ${err}`);
@@ -439,16 +469,29 @@ export default function App() {
     }
 
     const out = await res.json();
+
     setPlanBlocks(out.blocks ?? []);
-    setPlanStats({ scheduledBlocks: out.scheduledBlocks, unscheduledTasks: out.unscheduledTasks });
-    setMsg(`Plan generated. Blocks: ${out.scheduledBlocks}, unscheduled tasks: ${out.unscheduledTasks}.`);
+    setPlanStats({
+      scheduledBlocks: out.scheduledBlocks,
+      unscheduledTasks: out.unscheduledTasks,
+      unscheduled: out.unscheduled ?? [],
+    });
+
+    setMsg(
+      `Plan generated. Blocks: ${out.scheduledBlocks}, unscheduled tasks: ${out.unscheduledTasks}.`
+    );
+
     await loadDay(dayDate);
     await loadTasks();
   };
 
   const replanWeek = async (ws: string) => {
     setMsg("Replanning week...");
-    const res = await fetch(`/api/replan?weekStart=${encodeURIComponent(ws)}`, { method: "POST" });
+
+    const res = await fetch(`/api/replan?weekStart=${encodeURIComponent(ws)}`, {
+      method: "POST",
+    });
+
     if (!res.ok) {
       const err = await res.text();
       setMsg(`Replan failed (${res.status}): ${err}`);
@@ -456,11 +499,18 @@ export default function App() {
     }
 
     const out = await res.json();
+
     setPlanBlocks(out.blocks ?? []);
-    setPlanStats({ scheduledBlocks: out.scheduledBlocks, unscheduledTasks: out.unscheduledTasks });
+    setPlanStats({
+      scheduledBlocks: out.scheduledBlocks,
+      unscheduledTasks: out.unscheduledTasks,
+      unscheduled: out.unscheduled ?? [],
+    });
+
     setMsg(
       `Replan complete. DONE blocks were kept fixed. Remaining work was rescheduled. Unscheduled tasks: ${out.unscheduledTasks}.`
     );
+
     await loadDay(dayDate);
     await loadTasks();
   };
@@ -482,9 +532,12 @@ export default function App() {
     }
 
     setMsg("Saving preferences...");
+
     const res = await fetch("/api/preferences", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         dayStartHour: prefDayStartHour,
         dayEndHour: prefDayEndHour,
@@ -499,6 +552,7 @@ export default function App() {
     }
 
     const out = (await res.json()) as Preferences;
+
     setPrefs(out);
     setMsg("Preferences saved. Generate or replan to apply them.");
   };
@@ -506,7 +560,9 @@ export default function App() {
   const updateBlockStatus = async (blockId: number, status: "DONE" | "SKIPPED" | "PLANNED") => {
     const res = await fetch(`/api/blocks/${blockId}/status`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ status }),
     });
 
@@ -517,6 +573,7 @@ export default function App() {
     }
 
     setMsg(`Block marked ${status}.`);
+
     await loadDay(dayDate);
     await loadTasks();
   };
@@ -557,7 +614,9 @@ export default function App() {
   const selectedDayReferenceTime =
     dayDate === todayIsoDate() ? Date.now() : new Date(`${dayDate}T00:00:00`).getTime();
 
-  const nextTimelineItem = todayTimeline.find((item) => new Date(item.end).getTime() > selectedDayReferenceTime);
+  const nextTimelineItem = todayTimeline.find(
+    (item) => new Date(item.end).getTime() > selectedDayReferenceTime
+  );
 
   const currentWeekStart = dayData?.weekStart ?? weekStart;
   const exportUrl = `/api/export/week?weekStart=${encodeURIComponent(weekStart)}`;
@@ -577,7 +636,9 @@ export default function App() {
   const Timeline = ({ limit }: { limit?: number }) => {
     const visibleItems = limit ? todayTimeline.slice(0, limit) : todayTimeline;
 
-    if (!dayData) return <p style={styles.muted}>Loading timeline…</p>;
+    if (!dayData) {
+      return <p style={styles.muted}>Loading timeline…</p>;
+    }
 
     if (todayTimeline.length === 0) {
       return <p style={styles.muted}>No timetable events or planned study blocks for this date yet.</p>;
@@ -587,7 +648,9 @@ export default function App() {
       <div>
         {visibleItems.map((it) => {
           const isBlock = it.type === "block";
-          const color = isBlock ? statusColor(it.extra) : { bg: "#1e293b", border: "#334155", text: "#bfdbfe" };
+          const color = isBlock
+            ? statusColor(it.extra)
+            : { bg: "#1e293b", border: "#334155", text: "#bfdbfe" };
 
           return (
             <div key={`${it.type}-${it.id}`} style={styles.timelineRow}>
@@ -677,7 +740,12 @@ export default function App() {
 
               <label style={{ ...styles.label, maxWidth: 180 }}>
                 Selected date
-                <input type="date" value={dayDate} onChange={(e) => setDayDate(e.target.value)} style={styles.input} />
+                <input
+                  type="date"
+                  value={dayDate}
+                  onChange={(e) => setDayDate(e.target.value)}
+                  style={styles.input}
+                />
               </label>
             </div>
 
@@ -704,7 +772,9 @@ export default function App() {
 
               <div style={styles.card}>
                 <div style={styles.muted}>Plan status</div>
-                <div style={{ fontSize: 24, fontWeight: 800, marginTop: 12 }}>{dayData?.hasPlan ? "Ready" : "Not ready"}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, marginTop: 12 }}>
+                  {dayData?.hasPlan ? "Ready" : "Not ready"}
+                </div>
                 <div style={{ ...styles.muted, fontSize: 13 }}>
                   {dayData?.hasPlan ? "A plan exists for this week" : "Generate a weekly plan"}
                 </div>
@@ -716,7 +786,10 @@ export default function App() {
                 <div style={styles.sectionHeader}>
                   <h3 style={styles.h3}>Today timeline</h3>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => generatePlan(currentWeekStart)} style={{ ...styles.button, ...styles.primaryButton }}>
+                    <button
+                      onClick={() => generatePlan(currentWeekStart)}
+                      style={{ ...styles.button, ...styles.primaryButton }}
+                    >
                       Generate week
                     </button>
                     <button onClick={() => replanWeek(currentWeekStart)} style={styles.button}>
@@ -747,7 +820,9 @@ export default function App() {
                       </div>
                       <p style={{ ...styles.muted, marginBottom: 0 }}>
                         {formatNiceTime(nextTimelineItem.start)} → {formatNiceTime(nextTimelineItem.end)}
-                        {nextTimelineItem.extra && nextTimelineItem.type === "event" ? ` | ${nextTimelineItem.extra}` : ""}
+                        {nextTimelineItem.extra && nextTimelineItem.type === "event"
+                          ? ` | ${nextTimelineItem.extra}`
+                          : ""}
                       </p>
                     </>
                   ) : (
@@ -775,7 +850,10 @@ export default function App() {
                   <h3 style={styles.h3}>Study settings</h3>
                   {prefs ? (
                     <p style={{ ...styles.muted, marginBottom: 0 }}>
-                      Window: <b style={{ color: "#f4f4f5" }}>{prefs.dayStartHour}:00–{prefs.dayEndHour}:00</b>
+                      Window:{" "}
+                      <b style={{ color: "#f4f4f5" }}>
+                        {prefs.dayStartHour}:00–{prefs.dayEndHour}:00
+                      </b>
                       <br />
                       Block size: <b style={{ color: "#f4f4f5" }}>{prefs.blockMinutes} minutes</b>
                     </p>
@@ -893,8 +971,14 @@ export default function App() {
                     <div style={{ display: "grid", gap: 8 }}>
                       {doneTasks.map((t) => (
                         <div key={t.id} style={styles.cardSoft}>
-                          <b>{t.title}</b>
-                          <p style={{ ...styles.muted, margin: "6px 0 0", fontSize: 13 }}>Status: DONE</p>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                            <b>{t.title}</b>
+                            <Badge label="DONE" color={statusColor("DONE")} />
+                          </div>
+                          <p style={{ ...styles.muted, margin: "6px 0 0", fontSize: 13 }}>
+                            Estimate: {t.estMinutes} minutes
+                            {t.deadline ? ` | Due ${formatNiceDateTime(t.deadline)}` : " | No deadline"}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -953,7 +1037,10 @@ export default function App() {
                     </label>
 
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button onClick={() => generatePlan(weekStart)} style={{ ...styles.button, ...styles.primaryButton }}>
+                      <button
+                        onClick={() => generatePlan(weekStart)}
+                        style={{ ...styles.button, ...styles.primaryButton }}
+                      >
                         Generate plan
                       </button>
 
@@ -970,10 +1057,34 @@ export default function App() {
                   {planStats && (
                     <div style={{ ...styles.cardSoft, marginTop: 14 }}>
                       <b>Plan summary</b>
-                      <p style={{ ...styles.muted, marginBottom: 0 }}>
-                        Blocks scheduled: <b style={{ color: "#f4f4f5" }}>{planStats.scheduledBlocks}</b> | Unscheduled
-                        tasks: <b style={{ color: "#f4f4f5" }}>{planStats.unscheduledTasks}</b>
+
+                      <p style={{ ...styles.muted, marginBottom: planStats.unscheduled.length > 0 ? 10 : 0 }}>
+                        Blocks scheduled:{" "}
+                        <b style={{ color: "#f4f4f5" }}>{planStats.scheduledBlocks}</b> | Unscheduled tasks:{" "}
+                        <b style={{ color: "#f4f4f5" }}>{planStats.unscheduledTasks}</b>
                       </p>
+
+                      {planStats.unscheduled.length > 0 && (
+                        <div
+                          style={{
+                            border: "1px solid #7c2d12",
+                            background: "rgba(124, 45, 18, 0.18)",
+                            borderRadius: 12,
+                            padding: 12,
+                            marginTop: 10,
+                          }}
+                        >
+                          <b style={{ color: "#fed7aa" }}>Could not fully schedule:</b>
+
+                          <ul style={{ marginBottom: 0 }}>
+                            {planStats.unscheduled.map((task) => (
+                              <li key={task.taskId} style={{ color: "#fed7aa", marginTop: 6 }}>
+                                {task.title}: {task.remainingMinutes} minutes remaining
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1030,7 +1141,10 @@ export default function App() {
                   <h3 style={styles.h3}>Planner settings</h3>
                   {prefs ? (
                     <p style={{ ...styles.muted, marginBottom: 0 }}>
-                      Study window: <b style={{ color: "#f4f4f5" }}>{prefs.dayStartHour}:00–{prefs.dayEndHour}:00</b>
+                      Study window:{" "}
+                      <b style={{ color: "#f4f4f5" }}>
+                        {prefs.dayStartHour}:00–{prefs.dayEndHour}:00
+                      </b>
                       <br />
                       Block size: <b style={{ color: "#f4f4f5" }}>{prefs.blockMinutes} minutes</b>
                     </p>
@@ -1107,7 +1221,10 @@ export default function App() {
 
                   {prefs ? (
                     <p style={{ ...styles.muted, marginBottom: 0 }}>
-                      Window: <b style={{ color: "#f4f4f5" }}>{prefs.dayStartHour}:00–{prefs.dayEndHour}:00</b>
+                      Window:{" "}
+                      <b style={{ color: "#f4f4f5" }}>
+                        {prefs.dayStartHour}:00–{prefs.dayEndHour}:00
+                      </b>
                       <br />
                       Block: <b style={{ color: "#f4f4f5" }}>{prefs.blockMinutes} minutes</b>
                       <br />
@@ -1121,7 +1238,8 @@ export default function App() {
                 <section style={styles.card}>
                   <h3 style={styles.h3}>System</h3>
                   <p style={{ ...styles.muted, marginBottom: 0 }}>
-                    API connection: <b style={{ color: status === "ok" ? "#bbf7d0" : "#fecaca" }}>{status}</b>
+                    API connection:{" "}
+                    <b style={{ color: status === "ok" ? "#bbf7d0" : "#fecaca" }}>{status}</b>
                     <br />
                     This status is kept here for development/testing instead of showing it on the main dashboard.
                   </p>
