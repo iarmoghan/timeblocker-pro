@@ -2,6 +2,7 @@ package ie.ncirl.timeblocker.api;
 
 import java.time.Instant;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -10,9 +11,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import ie.ncirl.timeblocker.domain.UserPreferences;
 import ie.ncirl.timeblocker.repo.UserPreferencesRepository;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 
 @RestController
 @RequestMapping("/api/preferences")
@@ -27,9 +25,9 @@ public class PreferencesController {
     }
 
     public record UpdatePrefs(
-            @Min(0) @Max(23) Integer dayStartHour,
-            @Min(0) @Max(23) Integer dayEndHour,
-            @Min(15) @Max(240) Integer blockMinutes
+            Integer dayStartHour,
+            Integer dayEndHour,
+            Integer blockMinutes
     ) {}
 
     @GetMapping
@@ -43,21 +41,34 @@ public class PreferencesController {
     }
 
     @PostMapping
-    public UserPreferences update(@Valid @RequestBody UpdatePrefs req) {
+    public ResponseEntity<?> update(@RequestBody UpdatePrefs req) {
         UserPreferences p = get();
 
-        if (req.dayStartHour() != null) p.setDayStartHour(req.dayStartHour());
-        if (req.dayEndHour() != null) p.setDayEndHour(req.dayEndHour());
-        if (req.blockMinutes() != null) p.setBlockMinutes(req.blockMinutes());
+        int nextDayStart = req.dayStartHour() == null ? p.getDayStartHour() : req.dayStartHour();
+        int nextDayEnd = req.dayEndHour() == null ? p.getDayEndHour() : req.dayEndHour();
+        int nextBlockMinutes = req.blockMinutes() == null ? p.getBlockMinutes() : req.blockMinutes();
 
-        // simple validation
-        if (p.getDayEndHour() <= p.getDayStartHour()) {
-            // reset to safe defaults if user gives invalid range
-            p.setDayStartHour(8);
-            p.setDayEndHour(20);
+        if (nextDayStart < 0 || nextDayStart > 23) {
+            return ResponseEntity.badRequest().body("Day start hour must be between 0 and 23.");
         }
 
+        if (nextDayEnd < 0 || nextDayEnd > 23) {
+            return ResponseEntity.badRequest().body("Day end hour must be between 0 and 23.");
+        }
+
+        if (nextDayStart >= nextDayEnd) {
+            return ResponseEntity.badRequest().body("Day start must be earlier than day end.");
+        }
+
+        if (nextBlockMinutes < 15 || nextBlockMinutes > 240) {
+            return ResponseEntity.badRequest().body("Block minutes must be between 15 and 240.");
+        }
+
+        p.setDayStartHour(nextDayStart);
+        p.setDayEndHour(nextDayEnd);
+        p.setBlockMinutes(nextBlockMinutes);
         p.setUpdatedAt(Instant.now());
-        return repo.save(p);
+
+        return ResponseEntity.ok(repo.save(p));
     }
 }

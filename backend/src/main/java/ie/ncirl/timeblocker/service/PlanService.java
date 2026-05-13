@@ -80,7 +80,6 @@ public class PlanService {
             return planRepo.save(p);
         });
 
-        // Fresh generation: wipe blocks for this plan
         blockRepo.deleteByPlanId(plan.getId());
 
         return scheduleIntoPlan(plan, weekStart, Instant.MIN, List.of());
@@ -93,7 +92,6 @@ public class PlanService {
 
         Instant now = Instant.now();
 
-        // Keep DONE blocks as busy, delete future PLANNED blocks
         List<Block> all = blockRepo.findByPlanIdOrderByStartTimeAsc(plan.getId());
         List<Block> keepBusy = new ArrayList<>();
 
@@ -119,8 +117,8 @@ public class PlanService {
         UserPreferences prefs = loadPrefs();
 
         int dayStartHour = prefs.getDayStartHour() == null ? 8 : prefs.getDayStartHour();
-        int dayEndHour   = prefs.getDayEndHour() == null ? 20 : prefs.getDayEndHour();
-        int blockMin     = prefs.getBlockMinutes() == null ? 60 : prefs.getBlockMinutes();
+        int dayEndHour = prefs.getDayEndHour() == null ? 20 : prefs.getDayEndHour();
+        int blockMin = prefs.getBlockMinutes() == null ? 60 : prefs.getBlockMinutes();
 
         if (dayEndHour <= dayStartHour) {
             dayStartHour = 8;
@@ -131,10 +129,13 @@ public class PlanService {
             blockMin = 15;
         }
 
+        if (blockMin > 240) {
+            blockMin = 240;
+        }
+
         Instant weekStartInstant = weekStart.atStartOfDay(ZONE).toInstant();
         Instant weekEndInstant = weekStart.plusDays(7).atStartOfDay(ZONE).toInstant();
 
-        // Busy intervals from timetable events
         var events = eventRepo.findAllByOrderByStartTimeAsc().stream()
                 .filter(e -> e.getStartTime().isBefore(weekEndInstant) && e.getEndTime().isAfter(weekStartInstant))
                 .collect(Collectors.toList());
@@ -145,23 +146,20 @@ public class PlanService {
             busy.add(new Interval(e.getStartTime(), e.getEndTime()));
         }
 
-        // Busy intervals from DONE blocks we keep
         for (Block b : keepBusyBlocks) {
             busy.add(new Interval(b.getStartTime(), b.getEndTime()));
         }
 
         busy.sort(Comparator.comparing(Interval::start));
 
-        // Build free intervals day-by-day
         List<Interval> free = new ArrayList<>();
 
         for (int d = 0; d < 7; d++) {
             LocalDate day = weekStart.plusDays(d);
 
             Instant baseStart = day.atTime(dayStartHour, 0).atZone(ZONE).toInstant();
-            Instant baseEnd   = day.atTime(dayEndHour, 0).atZone(ZONE).toInstant();
+            Instant baseEnd = day.atTime(dayEndHour, 0).atZone(ZONE).toInstant();
 
-            // Don’t schedule in the past during replan
             if (baseEnd.isBefore(fromInstant)) {
                 continue;
             }
@@ -181,7 +179,6 @@ public class PlanService {
             final Instant dayStartFinal = ds;
             final Instant dayEndFinal = de;
 
-            // Collect busy intervals that overlap this day window
             List<Interval> dayBusy = new ArrayList<>();
 
             for (Interval b : busy) {
@@ -193,15 +190,22 @@ public class PlanService {
             free.addAll(subtract(new Interval(dayStartFinal, dayEndFinal), dayBusy));
         }
 
-        // OPEN tasks only, sorted by deadline then priority
+        /*
+         * Smarter final-project ordering:
+         * 1. Earliest deadline first
+         * 2. Highest priority second
+         * 3. Oldest created task third
+         * 4. Lowest id last as a stable fallback
+         */
         List<Task> tasks = taskRepo.findByUserIdAndStatusOrderByDeadlineAsc(DEMO_USER_ID, "OPEN")
                 .stream()
                 .sorted(Comparator
                         .comparing((Task t) -> t.getDeadline() == null ? Instant.MAX : t.getDeadline())
-                        .thenComparing((Task t) -> -t.getPriority()))
+                        .thenComparing((Task t) -> -(t.getPriority() == null ? 0 : t.getPriority()))
+                        .thenComparing((Task t) -> t.getCreatedAt() == null ? Instant.MAX : t.getCreatedAt())
+                        .thenComparing((Task t) -> t.getId() == null ? Long.MAX_VALUE : t.getId()))
                 .toList();
 
-        // Minutes already completed from DONE blocks
         Map<Long, Integer> doneMinutesByTask = new HashMap<>();
 
         for (Block b : keepBusyBlocks) {
@@ -250,7 +254,6 @@ public class PlanService {
                 blocksCreated++;
                 remaining -= slice;
 
-                // Consume from start of that free interval
                 Interval leftover = new Interval(end, slot.end());
                 free.remove(idx);
 
@@ -306,7 +309,6 @@ public class PlanService {
             free.add(new Interval(cursor, window.end()));
         }
 
-        // Remove tiny fragments under 10 minutes
         return free.stream()
                 .filter(i -> Duration.between(i.start(), i.end()).toMinutes() >= 10)
                 .toList();
