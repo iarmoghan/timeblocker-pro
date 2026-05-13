@@ -1240,8 +1240,6 @@ export default function App() {
                   <p style={{ ...styles.muted, marginBottom: 0 }}>
                     API connection:{" "}
                     <b style={{ color: status === "ok" ? "#bbf7d0" : "#fecaca" }}>{status}</b>
-                    <br />
-                    This status is kept here for development/testing instead of showing it on the main dashboard.
                   </p>
                 </section>
               </aside>
