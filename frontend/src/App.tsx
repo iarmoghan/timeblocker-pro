@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { formatNiceDateTime, formatNiceRange, formatNiceTime } from "./utils/datetime";
 
+// Frontend TypeScript types.
+// These describe the shape of the JSON data returned by the backend.
 type EventItem = {
   id: number;
   title: string;
@@ -52,8 +54,10 @@ type Preferences = {
   updatedAt: string;
 };
 
+// The app has four main screens.
 type Tab = "dashboard" | "tasks" | "planner" | "settings";
 
+// Converts a JavaScript Date into yyyy-mm-dd format for date inputs and API calls.
 function toLocalIsoDate(d = new Date()) {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -65,6 +69,8 @@ function todayIsoDate() {
   return toLocalIsoDate(new Date());
 }
 
+// Finds the Monday for the selected week.
+// The backend planner uses a weekStart date when generating a plan.
 function computeMondayIso(d = new Date()) {
   const day = d.getDay();
   const diffToMon = (day === 0 ? -6 : 1) - day;
@@ -74,6 +80,7 @@ function computeMondayIso(d = new Date()) {
   return toLocalIsoDate(mon);
 }
 
+// Converts numeric priority into a user-friendly label.
 function priorityLabel(priority: number) {
   if (priority >= 4) return "High";
   if (priority >= 2) return "Medium";
@@ -86,6 +93,7 @@ function priorityColor(priority: number) {
   return { bg: "#123524", border: "#1f6b45", text: "#bbf7d0" };
 }
 
+// Chooses badge colours based on block status.
 function statusColor(status: string) {
   if (status === "DONE") return { bg: "#123524", border: "#1f6b45", text: "#bbf7d0" };
   if (status === "SKIPPED") return { bg: "#3b2f12", border: "#7c5d12", text: "#fde68a" };
@@ -93,6 +101,8 @@ function statusColor(status: string) {
   return { bg: "#27272a", border: "#52525b", text: "#e4e4e7" };
 }
 
+// Inline styles for the frontend.
+// In a larger version I would split this into CSS/components, but it keeps this prototype self-contained.
 const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: "100vh",
@@ -255,6 +265,7 @@ const styles: Record<string, CSSProperties> = {
   },
 };
 
+// Small reusable badge component used for priorities, events and block statuses.
 function Badge({ label, color }: { label: string; color?: { bg: string; border: string; text: string } }) {
   return (
     <span
@@ -271,19 +282,24 @@ function Badge({ label, color }: { label: string; color?: { bg: string; border: 
 }
 
 export default function App() {
+  // Main UI state for navigation and user messages.
+  // tab controls which screen is currently visible. 
   const [tab, setTab] = useState<Tab>("dashboard");
   const [status, setStatus] = useState("loading...");
   const [msg, setMsg] = useState("");
 
+  // Timetable import state. The selected .ics file is uploaded to the backend.
   const [icsFile, setIcsFile] = useState<File | null>(null);
   const [events, setEvents] = useState<EventItem[]>([]);
 
+  // Task form and task list state.
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDeadlineLocal, setTaskDeadlineLocal] = useState("");
   const [taskEst, setTaskEst] = useState(60);
   const [taskPriority, setTaskPriority] = useState(1);
 
+  // Weekly plan state. weekStart is the Monday used by the backend planner.
   const [weekStart, setWeekStart] = useState(() => computeMondayIso());
   const [planBlocks, setPlanBlocks] = useState<Block[]>([]);
   const [planStats, setPlanStats] = useState<{
@@ -292,24 +308,30 @@ export default function App() {
     unscheduled: UnscheduledTask[];
   } | null>(null);
 
+  // Dashboard day view state. This lets the user choose a specific date to inspect.
   const [dayDate, setDayDate] = useState(todayIsoDate());
   const [dayData, setDayData] = useState<DayResponse | null>(null);
 
+  // User preference state for study hours and block size.
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [prefDayStartHour, setPrefDayStartHour] = useState(9);
   const [prefDayEndHour, setPrefDayEndHour] = useState(18);
   const [prefBlockMinutes, setPrefBlockMinutes] = useState(45);
 
+  // Loads imported timetable events from the backend.
   const loadEvents = async () => {
     const res = await fetch("/api/events");
     setEvents(await res.json());
   };
 
+  // Loads all tasks from the backend.
   const loadTasks = async () => {
     const res = await fetch("/api/tasks");
     setTasks(await res.json());
   };
 
+  // Loads dashboard data for one selected day.
+  // This includes fixed events and generated study blocks.
   const loadDay = async (date: string) => {
     const res = await fetch(`/api/day?date=${encodeURIComponent(date)}`);
 
@@ -327,6 +349,7 @@ export default function App() {
     }
   };
 
+  // Loads saved study preferences such as start hour, end hour and block size.
   const loadPrefs = async () => {
     const res = await fetch("/api/preferences");
 
@@ -343,10 +366,14 @@ export default function App() {
     setPrefBlockMinutes(out.blockMinutes);
   };
 
+  // Refreshes all main data from the backend.
+  // This is used by the Sync data button.
   const refreshAll = async () => {
     await Promise.all([loadEvents(), loadTasks(), loadDay(dayDate), loadPrefs()]);
   };
 
+  // This runs once when the app first loads.
+  // It checks the backend health and loads the initial data.
   useEffect(() => {
     fetch("/api/health")
       .then((r) => r.json())
@@ -359,10 +386,13 @@ export default function App() {
     loadPrefs();
   }, []);
 
+  // Whenever the selected day changes, reload that day from the backend.
   useEffect(() => {
     loadDay(dayDate);
   }, [dayDate]);
 
+  // Uploads the selected .ics timetable file to the backend.
+  // The backend parses it and stores timetable events as fixed busy time.
   const importIcs = async () => {
     if (!icsFile) {
       setMsg("Please choose an .ics file first.");
@@ -392,6 +422,8 @@ export default function App() {
     await loadDay(dayDate);
   };
 
+  // Creates a task by sending the form data to TaskController.
+  // The backend stores it as an OPEN task so it can be scheduled.
   const addTask = async () => {
     if (!taskTitle.trim()) {
       setMsg("Task title is required.");
@@ -439,6 +471,8 @@ export default function App() {
     await loadDay(dayDate);
   };
 
+  // Manually marks a task as done.
+  // The backend also updates linked blocks so the timeline stays consistent.
   const markTaskDone = async (id: number) => {
     const res = await fetch(`/api/tasks/${id}/done`, {
       method: "POST",
@@ -455,6 +489,8 @@ export default function App() {
     await loadDay(dayDate);
   };
 
+  // Calls the backend to generate a weekly plan for the selected week.
+  // The actual scheduling algorithm is in PlanService, not in the frontend.
   const generatePlan = async (ws: string) => {
     setMsg("Generating plan...");
 
@@ -485,6 +521,8 @@ export default function App() {
     await loadTasks();
   };
 
+  // Calls the backend to replan the week after progress changes.
+  // DONE blocks are kept fixed by the backend and remaining work is rescheduled.
   const replanWeek = async (ws: string) => {
     setMsg("Replanning week...");
 
@@ -515,6 +553,8 @@ export default function App() {
     await loadTasks();
   };
 
+  // Saves study preferences to the backend.
+  // These settings control the planner window and block size.
   const updatePrefs = async () => {
     if (prefDayStartHour < 0 || prefDayStartHour > 23 || prefDayEndHour < 0 || prefDayEndHour > 23) {
       setMsg("Day start and end must be between 0 and 23.");
@@ -557,6 +597,8 @@ export default function App() {
     setMsg("Preferences saved. Generate or replan to apply them.");
   };
 
+  // Updates a study block status when the user clicks Done, Skip or Reset.
+  // The backend may also update the parent task based on completed minutes.
   const updateBlockStatus = async (blockId: number, status: "DONE" | "SKIPPED" | "PLANNED") => {
     const res = await fetch(`/api/blocks/${blockId}/status`, {
       method: "POST",
@@ -578,6 +620,8 @@ export default function App() {
     await loadTasks();
   };
 
+  // Combines fixed events and generated study blocks into one sorted timeline.
+  // useMemo avoids recalculating unless dayData changes.
   const todayTimeline = useMemo(() => {
     if (!dayData) return [];
 
@@ -603,6 +647,7 @@ export default function App() {
     return items.sort((a, b) => +new Date(a.start) - +new Date(b.start));
   }, [dayData]);
 
+  // Split tasks into open and completed lists for display.
   const openTasks = tasks.filter((t) => t.status !== "DONE");
   const doneTasks = tasks.filter((t) => t.status === "DONE");
 
@@ -611,6 +656,7 @@ export default function App() {
   const todayDoneBlocksCount = dayData?.blocks.filter((b) => b.status === "DONE").length ?? 0;
   const todayPlannedBlocksCount = dayData?.blocks.filter((b) => b.status === "PLANNED").length ?? 0;
 
+  // Used to find the next upcoming timeline item.
   const selectedDayReferenceTime =
     dayDate === todayIsoDate() ? Date.now() : new Date(`${dayDate}T00:00:00`).getTime();
 
@@ -621,6 +667,7 @@ export default function App() {
   const currentWeekStart = dayData?.weekStart ?? weekStart;
   const exportUrl = `/api/export/week?weekStart=${encodeURIComponent(weekStart)}`;
 
+  // Reusable navigation button for switching between Dashboard, Tasks, Planner and Settings.
   const NavButton = ({ id, label }: { id: Tab; label: string }) => (
     <button
       onClick={() => setTab(id)}
@@ -633,6 +680,7 @@ export default function App() {
     </button>
   );
 
+  // Timeline component used to show both timetable events and planned study blocks.
   const Timeline = ({ limit }: { limit?: number }) => {
     const visibleItems = limit ? todayTimeline.slice(0, limit) : todayTimeline;
 
@@ -728,6 +776,7 @@ export default function App() {
           </div>
         )}
 
+        {/* Dashboard screen: shows day summary, timeline, quick actions and next item. */}
         {tab === "dashboard" && (
           <>
             <div style={styles.sectionHeader}>
@@ -866,6 +915,7 @@ export default function App() {
           </>
         )}
 
+        {/* Tasks screen: lets the user add tasks and review open/completed tasks. */}
         {tab === "tasks" && (
           <>
             <div style={styles.sectionHeader}>
@@ -989,6 +1039,7 @@ export default function App() {
           </>
         )}
 
+        {/* Planner screen: handles .ics import, plan generation, replanning and export. */}
         {tab === "planner" && (
           <>
             <div style={styles.sectionHeader}>
@@ -1157,6 +1208,7 @@ export default function App() {
           </>
         )}
 
+        {/* Settings screen: controls the study window and block size used by PlanService. */}
         {tab === "settings" && (
           <>
             <div style={styles.sectionHeader}>
